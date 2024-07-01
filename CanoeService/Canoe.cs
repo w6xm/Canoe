@@ -26,7 +26,7 @@ namespace CanoeService
         {
             if (context.Request.IsWebSocketRequest)
             {
-                WriteLineCanoe(context.Request.RemoteEndPoint.ToString() + " connected");
+                WriteLineToCanoeLog(context.Request.RemoteEndPoint.ToString() + " connected");
 
                 var webSocketContext = await context.AcceptWebSocketAsync(null);
                 WebSocket webSocket = webSocketContext.WebSocket;
@@ -41,7 +41,7 @@ namespace CanoeService
 
             else
             {
-                WriteLineCanoe("Not a WebSocket Request");
+                WriteLineToCanoeLog("Not a WebSocket Request");
                 HttpListenerResponse response = context.Response;
 
                 string responseString = $"<html><body><h1>Canoe</h1>The time is {DateTime.Now}<br></body></html>";
@@ -61,15 +61,20 @@ namespace CanoeService
 
         private async Task SendMessagesAsync(WebSocket webSocket)
         {
-            WriteLineCanoe($"SendMessageAsync started at {DateTime.Now}");
+            WriteLineToCanoeLog($"SendMessageAsync started at {DateTime.Now}");
 
             loopbackCapture = new WasapiLoopbackCapture
             {
                 WaveFormat = new WaveFormat(8000, 16, 1)
             };
 
-            loopbackCapture.DataAvailable += OnDataAvailable;
-            
+            loopbackCapture.DataAvailable += (object sender, WaveInEventArgs e) =>
+            {
+                // Write audio data to the buffer
+                audioBuffer.Write(e.Buffer, 0, e.BytesRecorded);
+                audioBuffer.Flush();
+            };
+
             try
             {
                 loopbackCapture.StartRecording();
@@ -77,7 +82,7 @@ namespace CanoeService
             
             catch
             {
-                WriteLineCanoe("SendMessageAsync: unable to start loopbackCapture");
+                WriteLineToCanoeLog("SendMessageAsync: unable to start loopbackCapture");
             }
 
             audioBuffer = new MemoryStream();
@@ -99,7 +104,7 @@ namespace CanoeService
                             if (sentMessagesCount % 1000 == 0)
                             {
                                 long unixTime = ((DateTimeOffset)DateTime.Now).ToUnixTimeSeconds();
-                                WriteLineCanoe($"UnixTime: {unixTime}, Messages: {sentMessagesCount}, audioBuffer.Length: {audioBuffer.Length}");
+                                WriteLineToCanoeLog($"UnixTime: {unixTime}, Messages: {sentMessagesCount}, audioBuffer.Length: {audioBuffer.Length}");
                             }
                         }
                         audioBuffer.SetLength(0);
@@ -111,17 +116,17 @@ namespace CanoeService
                 loopbackCapture.StopRecording();        // Clean up resources when the WebSocket connection is closed
                 loopbackCapture.Dispose();              //
                 audioBuffer.Dispose();                  // 
-                WriteLineCanoe($"SendMessageAsync: Cleaned up audio resources at {DateTime.Now}");
+                WriteLineToCanoeLog($"SendMessageAsync: Cleaned up audio resources at {DateTime.Now}");
             }
             catch (Exception ex)
             {
-                WriteLineCanoe($"SendMessagesAsync WebSocket send error: {ex.Message}");
+                WriteLineToCanoeLog($"SendMessagesAsync WebSocket send error: {ex.Message}");
             }
         }
 
         private async Task ReceiveMessagesAsync(WebSocket webSocket)
         {
-            WriteLineCanoe($"ReceiveMessageAsync started at {DateTime.Now}");
+            WriteLineToCanoeLog($"ReceiveMessageAsync started at {DateTime.Now}");
 
             WaveOut waveOut = new WaveOut
             {
@@ -148,9 +153,9 @@ namespace CanoeService
                     if (result.MessageType == WebSocketMessageType.Text)
                     {
                         string receivedMessage = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                        WriteLineCanoe(receivedMessage);
+                        WriteLineToCanoeLog(receivedMessage);
                         this.canoeState = ParseMessage(receivedMessage);
-                        WriteLineCanoe($"Jsonserializer: {JsonSerializer.Serialize(this.canoeState)}");
+                        WriteLineToCanoeLog($"Jsonserializer: {JsonSerializer.Serialize(this.canoeState)}");
 
                     }
                     if (result.MessageType == WebSocketMessageType.Binary)
@@ -166,17 +171,9 @@ namespace CanoeService
             }
             catch (Exception ex)
             {
-                WriteLineCanoe($"WebSocket receive error: {ex.Message}");
+                WriteLineToCanoeLog($"WebSocket receive error: {ex.Message}");
             }
         }
-
-        private void OnDataAvailable(object sender, WaveInEventArgs e)
-        {
-            // Write audio data to the buffer
-            audioBuffer.Write(e.Buffer, 0, e.BytesRecorded);
-            audioBuffer.Flush();
-        }
-
 
         public int GetVacDeviceNumber()
         {
@@ -185,14 +182,14 @@ namespace CanoeService
                 var caps = WaveOut.GetCapabilities(n);
                 if (caps.ProductName.Contains("VAC"))
                 {
-                    WriteLineCanoe($"GetVacDeviceNumber: Device #{n} is {caps.ProductName}");
+                    WriteLineToCanoeLog($"GetVacDeviceNumber: Device #{n} is {caps.ProductName}");
                     return n;
                 }
             }
             return -1; // the default device
         }
 
-        public void WriteLineCanoe(string Message)
+        public void WriteLineToCanoeLog(string Message)
         {
             string path = AppDomain.CurrentDomain.BaseDirectory + "\\Logs";
             if (!Directory.Exists(path)) { Directory.CreateDirectory(path); }
@@ -215,6 +212,7 @@ namespace CanoeService
             }
 
             /* 
+            // CURRENTLY UNTESTED!
             // Potential alternative way that's a bit less readable but doesn't have duplicate code
             // Might come in useful if we decide to do more with the logging.
             
@@ -225,7 +223,6 @@ namespace CanoeService
             }
             
              */
-
         }
     }
 }
