@@ -198,6 +198,7 @@ namespace CanoeService
             if (!Directory.Exists(path)) { Directory.CreateDirectory(path); }
 
             string filepath = AppDomain.CurrentDomain.BaseDirectory + "\\Logs\\CanoeLog_" + DateTime.Now.ToShortDateString().Replace('/', '_') + ".txt";
+
             if (!File.Exists(filepath))
             {
                 using (StreamWriter sw = File.CreateText(filepath))
@@ -212,6 +213,19 @@ namespace CanoeService
                     sw.WriteLine(Message);
                 }
             }
+
+            /* 
+            // Potential alternative way that's a bit less readable but doesn't have duplicate code
+            // Might come in useful if we decide to do more with the logging.
+            
+            // If the file does not exist, create it. Otherwise, append to it.
+            using (StreamWriter sw = !File.Exists(filepath) ? File.CreateText(filepath) : File.AppendText(filepath))
+            {
+                sw.WriteLine(Message);
+            }
+            
+             */
+
         }
     }
 }
