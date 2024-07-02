@@ -1,0 +1,134 @@
+HowTo Configure a PC for Canoe
+
+* Install Windows 11 Pro
+
+* Make a local admin accountinte
+	hint: no ethernet
+
+* Run Windows updates
+
+* set time automatically
+
+* rename host
+
+* add a dhcp reservation
+
+* enable RDP
+
+* install VAC470full
+	Rename playback and recording devices as VAC
+	Set speakers as default output device
+	Set VAC as default recording device
+
+* install tightvnc 2.8.81 64bit
+	typical - default options
+	create a password - for now	
+	
+* install canoe
+	open a commandshell as administrator
+
+	# install 
+	c:\Windows\Microsoft.NET\Framework\v4.0.30319\InstallUtil.exe C:\Users\w6xm\Debug\CanoeService.exe
+
+	# uninstall 
+	c:\Windows\Microsoft.NET\Framework\v4.0.30319\InstallUtil.exe /u C:\Users\w6xm\Debug\CanoeService.exe
+	
+	Open Services -> enable Canoe automatically
+
+* Install PFX
+	Install for Local machine
+	Get Thumbprint (certhash in next command)
+	
+* Install certificate for App
+	# https://learn.microsoft.com/en-us/dotnet/framework/wcf/feature-details/how-to-configure-a-port-with-an-ssl-certificate
+	netsh http add sslcert ipport=0.0.0.0:8443 certhash=99536c55ecd9a48b58bad463c5a810165b4cca8f appid={a74919dd-a810-4c2d-8ad9-0de212bb7c59}
+	netsh http add sslcert ipport=0.0.0.0:443 certhash=99536c55ecd9a48b58bad463c5a810165b4cca8f appid={a74919dd-a810-4c2d-8ad9-0de212bb7c59}
+	netsh http add sslcert ipport=0.0.0.0:8443 certhash=46f8f1fb5ffe5270c031a2c27f5a076b084c8d54 appid={a74919dd-a810-4c2d-8ad9-0de212bb7c59}
+	netsh http add sslcert ipport=0.0.0.0:443 certhash=46f8f1fb5ffe5270c031a2c27f5a076b084c8d54 appid={a74919dd-a810-4c2d-8ad9-0de212bb7c59}
+
+
+* install Windows Services for Linux
+	wsl --install -d Debian
+	username/password (not super important)
+	
+* install python3 and numpy 
+	apt install python3-numpy
+
+* untar noVNC in debian\canoe home dir
+
+* netsh proxy between wsl and windows
+netsh interface portproxy add v4tov4 listenport=6080 listenaddress=0.0.0.0 connectport=6080 connectaddress=172.21.0.252
+netsh interface portproxy add v4tov4 listenport=6080 listenaddress=0.0.0.0 connectport=6080 connectaddress=172.30.167.47
+netsh interface portproxy add v4tov4 listenport=6080 listenaddress=0.0.0.0 connectport=6080 connectaddress=172.22.90.37
+
+* run noVNC proxy
+./utils/novnc_proxy --vnc 10.19.35.14:5900 --cert ../certs/qth.w6xm.org.cert --key ../certs/qth.w6xm.org.key --listen 0.0.0.0:6080
+
+~/noVNC/utils/novnc_proxy --vnc 10.19.35.14:5900 --cert ~/qth.w6xm.org.cert --key ~/qth.w6xm.org.key --listen 0.0.0.0:6080
+
+* firewall
+add incoming ports for 6080 and 8443
+
+
+
+
+
+bash ./utils/novnc_proxy --vnc 10.19.35.13:5900 --listen 0.0.0.0:6080 --cert ../certs/qth.w6xm.org.cert --key ../certs/qth.w6xm.org.key --ssl-only --web-auth --auth-plugin BasicHTTPAuth --auth-source meow:cat
+
+
+* task schedular
+
+General:
+Run whether user is logged in or not
+
+Triggers:
+new->At startup
+
+
+Action: start a program
+
+program/script:
+"C:\Program Files\WSL\wsl.exe"
+
+arguments
+~ -u parc -d Debian -e noVNC.sh
+
+Conditions:
+unclick everything
+
+Settings:
+Only allow task to be run on demand
+
+
+
+$wsl_ip = (wsl hostname -I).trim()
+Write-Host "WSL Machine IP: ""$wsl_ip"""
+netsh interface portproxy add v4tov4 listenport=6080 connectport=6080 connectaddress=$wsl_ip
+
+
+$trigger = New-JobTrigger -AtStartup -RandomDelay 00:00:15
+Register-ScheduledJob -Trigger $trigger -FilePath C:\Users\admin.parc\Canoe\add_wsl_canoe_portproxy.ps1 -Name WSL_Canoe_PortProxy
+
+
+
+owerShell -Command "Set-ExecutionPolicy Unrestricted" >> "%TEMP%\StartupLog.txt" 2>&1
+PowerShell c:\Users\admin.parc\Canoe\add_wsl_canoe_portproxy.ps1>> "%TEMP%\StartupLog.txt" 2>&1
+
+
+PowerShell c:\Users\admin.parc\Canoe\add_wsl_canoe_portproxy.ps1>> "%TEMP%\StartupLog.txt" 2>&1
+
+@START /MIN "Debian" WSL.EXE ~ -u parc -d Debian -e noVNC
+
+PowerShell c:\Users\admin.parc\Canoe\add_wsl_canoe_portproxy.ps1
+
+
+
+
+
+Powershell -Command {$wsl_ip = (wsl hostname -I).trim() ; netsh interface portproxy add v4tov4 listenport=6080 connectport=6080 connectaddress=$wsl_ip}
+
+
+
+
+$trigger = New-JobTrigger -AtStartup -RandomDelay 00:00:15
+Register-ScheduledJob -Trigger $trigger -FilePath C:\Users\admin.parc\Canoe\portproxy.ps1 -Name noVNC-Portproxy
