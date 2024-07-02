@@ -18,21 +18,37 @@ namespace CanoeService
 
         public static CanoeState ParseMessage(string message)
         {
+            // TODO: Assess whether this could just be returned directly
+            // with no intermediate "state" object.
             CanoeState state = JsonSerializer.Deserialize<CanoeState>(message);
             return state;
         }
 
-        public async Task StartAsync(HttpListenerContext context)
+        public async Task StartCanoeAsync(HttpListenerContext context)
         {
+
             if (context.Request.IsWebSocketRequest)
             {
                 WriteLineToCanoeLog(context.Request.RemoteEndPoint.ToString() + " connected");
 
                 var webSocketContext = await context.AcceptWebSocketAsync(null);
                 WebSocket webSocket = webSocketContext.WebSocket;
-                _ = ReceiveMessagesAsync(webSocket);
-                _ = SendMessagesAsync(webSocket);
 
+                // Start continuously sending/receiving audio with the websocket
+                _ = ReceiveDataAsync(webSocket);
+                _ = SendAudioAsync(webSocket);
+                // TODO: Currently, as far as I can tell, if either of these 
+                // tasks encounter problems they'll just quietly die. There
+                // should probably be some way for the program to notice this
+                // and do something (attempt to reestablish a connection, maybe?).
+
+
+                // Delay the thread indefinitely so the program
+                // doesn't return while the audio processing tasks
+                // are running.
+                // TODO: Investigate better ways to do this; at the
+                // very least it should probabaly let the method return
+                // when the websocket closes.
                 while (true)
                 {
                     await Task.Delay(1000);
@@ -41,6 +57,9 @@ namespace CanoeService
 
             else
             {
+                // If Canoe receives a regular http request instead of a
+                // websocket, send back a very basic html response
+
                 WriteLineToCanoeLog("Not a WebSocket Request");
                 HttpListenerResponse response = context.Response;
 
@@ -59,7 +78,7 @@ namespace CanoeService
             }
         }
 
-        private async Task SendMessagesAsync(WebSocket webSocket)
+        private async Task SendAudioAsync(WebSocket webSocket)
         {
             WriteLineToCanoeLog($"SendMessageAsync started at {DateTime.Now}");
 
@@ -79,7 +98,6 @@ namespace CanoeService
             {
                 loopbackCapture.StartRecording();
             }
-            
             catch
             {
                 WriteLineToCanoeLog("SendMessageAsync: unable to start loopbackCapture");
@@ -124,7 +142,9 @@ namespace CanoeService
             }
         }
 
-        private async Task ReceiveMessagesAsync(WebSocket webSocket)
+        // Receive audio and control messages for as long as the 
+        // websocket is open
+        private async Task ReceiveDataAsync(WebSocket webSocket)
         {
             WriteLineToCanoeLog($"ReceiveMessageAsync started at {DateTime.Now}");
 
@@ -154,15 +174,18 @@ namespace CanoeService
                     {
                         string receivedMessage = Encoding.UTF8.GetString(buffer, 0, result.Count);
                         WriteLineToCanoeLog(receivedMessage);
+
                         this.canoeState = ParseMessage(receivedMessage);
                         WriteLineToCanoeLog($"Jsonserializer: {JsonSerializer.Serialize(this.canoeState)}");
 
                     }
-                    if (result.MessageType == WebSocketMessageType.Binary)
+
+                    else if (result.MessageType == WebSocketMessageType.Binary)
                     {
                         bufferedWaveProvider.AddSamples(buffer, 0, result.Count);
 
                     }
+
                     else if (result.MessageType == WebSocketMessageType.Close)
                     {
                         await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, CancellationToken.None);

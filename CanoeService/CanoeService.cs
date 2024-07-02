@@ -84,7 +84,7 @@ namespace CanoeService
         {
             WriteToFile($"Creating new Canoe() at {DateTime.Now}");
             var canoe = new Canoe();
-            await canoe.StartAsync(context);
+            await canoe.StartCanoeAsync(context);
         }
     }
 }
